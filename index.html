@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Control ESP32-CAM BLE</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f2f4f8;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      margin: 0;
+    }
+    .panel {
+      background: #ffffff;
+      padding: 24px;
+      border-radius: 12px;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+      width: 340px;
+      text-align: center;
+    }
+    button {
+      width: 100%;
+      padding: 12px;
+      margin-top: 10px;
+      border: none;
+      border-radius: 8px;
+      font-size: 15px;
+      font-weight: bold;
+      cursor: pointer;
+      color: #fff;
+    }
+    .btn-connect { background: #1d4ed8; }
+    .btn-on { background: #16a34a; }
+    .btn-off { background: #dc2626; }
+    .row { display: flex; gap: 10px; }
+    .lectura {
+      margin: 20px 0;
+      padding: 14px;
+      background: #f8fafc;
+      border-radius: 8px;
+      font-size: 20px;
+    }
+    #estado {
+      margin-top: 14px;
+      font-size: 13px;
+      color: #475569;
+      word-break: break-word;
+    }
+  </style>
+</head>
+<body>
+  <div class="panel">
+    <h2>ESP32-CAM BLE</h2>
+    <button class="btn-connect" onclick="conectar()">Conectar BLE</button>
+
+    <div class="lectura">
+      Humedad: <strong id="humedad">--</strong>
+    </div>
+
+    <div class="row">
+      <button class="btn-on" onclick="enviar('ON')">ON</button>
+      <button class="btn-off" onclick="enviar('OFF')">OFF</button>
+    </div>
+
+    <p id="estado">Estado: Desconectado</p>
+  </div>
+
+  <script>
+    const SERVICE_UUID = "4fafc201-1fb5-459e-8fcc-c5c9c331914b";
+    const CHARACTERISTIC_UUID = "beb5483e-36e1-4688-b7f5-ea07361b26aac";
+
+    let caracteristicaBLE = null;
+
+    async function conectar() {
+      const estadoEl = document.getElementById("estado");
+      const humedadEl = document.getElementById("humedad");
+
+      if (!navigator.bluetooth) {
+        estadoEl.textContent = "Este navegador no soporta Web Bluetooth (usa Chrome en PC o Android).";
+        return;
+      }
+
+      try {
+        estadoEl.textContent = "Buscando ESP32_CAM_Control...";
+
+        const device = await navigator.bluetooth.requestDevice({
+          filters: [{ name: "ESP32_CAM_Control" }],
+          optionalServices: [SERVICE_UUID]
+        });
+
+        device.addEventListener("gattserverdisconnected", () => {
+          caracteristicaBLE = null;
+          estadoEl.textContent = "Estado: Desconectado";
+        });
+
+        estadoEl.textContent = "Conectando...";
+        const server = await device.gatt.connect();
+        const service = await server.getPrimaryService(SERVICE_UUID);
+        caracteristicaBLE = await service.getCharacteristic(CHARACTERISTIC_UUID);
+
+        await caracteristicaBLE.startNotifications();
+        caracteristicaBLE.addEventListener("characteristicvaluechanged", (event) => {
+          const texto = new TextDecoder().decode(event.target.value).trim();
+          humedadEl.textContent = texto;
+        });
+
+        estadoEl.textContent = "Estado: Conectado a ESP32_CAM_Control";
+      } catch (err) {
+        estadoEl.textContent = "Error: " + err.message;
+      }
+    }
+
+    async function enviar(comando) {
+      const estadoEl = document.getElementById("estado");
+      if (!caracteristicaBLE) {
+        estadoEl.textContent = "Primero conecta el Bluetooth.";
+        return;
+      }
+
+      try {
+        const datos = new TextEncoder().encode(comando);
+        await caracteristicaBLE.writeValue(datos);
+        estadoEl.textContent = "Comando enviado: " + comando;
+      } catch (err) {
+        estadoEl.textContent = "Error al enviar " + comando + ": " + err.message;
+      }
+    }
+  </script>
+</body>
+</html>
